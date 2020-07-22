@@ -1,0 +1,15 @@
+target
+*.class
+#For IntelliJ
+*.iml
+*.ipr
+*.iws
+.idea
+
+#For Eclipse
+build
+.classpath
+.project
+.settings
+#Application
+/logs
