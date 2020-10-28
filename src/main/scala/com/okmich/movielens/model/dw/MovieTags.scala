@@ -1,9 +1,8 @@
 package com.okmich.movielens.model.dw
 
-import java.sql.Timestamp
 
 
-class MovieTags(userId: Int,
+case class MovieTags(userId: Int,
                 movieId: Int,
                 tag: String,
                 year: Int,
@@ -11,9 +10,9 @@ class MovieTags(userId: Int,
                 dayOfMonth: Int,
                 dayOfWeek: String,
                 hour: Int,
-                minute: Int,
+                minitue: Int,
                 am_pm: String,
-                ts: Timestamp) {
+                ts: Long) {
 
   private val SEP = "|"
 
@@ -23,7 +22,7 @@ class MovieTags(userId: Int,
     SEP + this.dayOfMonth +
     SEP + this.dayOfWeek +
     SEP + this.hour +
-    SEP + this.minute +
+    SEP + this.minitue +
     SEP + this.am_pm +
     SEP + this.ts + " ]"
 

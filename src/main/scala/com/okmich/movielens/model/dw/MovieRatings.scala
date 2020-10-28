@@ -10,9 +10,9 @@ case class MovieRatings(userId: Int,
                         dayOfMonth: Int,
                         dayOfWeek: String,
                         hour: Int,
-                        minute: Int,
+                        minitue: Int,
                         am_pm: String,
-                        ts: Timestamp) {
+                        ts: Long) {
 
   private val SEP = "|"
 
@@ -22,7 +22,7 @@ case class MovieRatings(userId: Int,
     SEP + this.dayOfMonth +
     SEP + this.dayOfWeek +
     SEP + this.hour +
-    SEP + this.minute +
+    SEP + this.minitue +
     SEP + this.am_pm +
     SEP + this.ts + " ]"
 }
