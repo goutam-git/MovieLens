@@ -1,21 +1,18 @@
 package com.okmich.movielens.jobs.dw
 
 import java.sql.Timestamp
-import java.text.SimpleDateFormat
 
-import com.okmich.movielens.utils.SparkUtils.loadSpark
-import com.okmich.movielens.utils.DateUtils
-import com.okmich.movielens.model.conf.Environment
-import com.okmich.movielens.model.conf.Environment.EnvironmentEnum
-import com.okmich.movielens.model.da.{Movies, Ratings}
+import com.okmich.movielens.model.da.{Movies, Ratings, Tags}
 import com.okmich.movielens.model.dw.MovieTypes
-import com.typesafe.config.{Config, ConfigFactory}
+import com.okmich.movielens.utils.DateUtils
+import com.okmich.movielens.utils.DateUtils._
+import com.okmich.movielens.utils.SparkUtils.loadSpark
+import org.apache.spark
+import org.apache.spark.sql._
 import org.apache.spark.sql.expressions.UserDefinedFunction
-import org.apache.spark.sql.{DataFrame, Dataset, Encoder, SQLContext, SparkSession}
-import org.apache.spark.sql.functions.{col, lit, udf}
-import org.slf4j.{Logger, LoggerFactory}
-import org.apache.spark.sql.functions.to_timestamp
+import org.apache.spark.sql.functions.{col, lit, regexp_extract, udf}
 import org.joda.time.format.DateTimeFormat
+import org.slf4j.{Logger, LoggerFactory}
 
 import scala.util.{Failure, Success, Try}
 
@@ -34,7 +31,7 @@ object TransFormMovies extends MovieLensConfig {
 
   def main(args: Array[String]): Unit = {
     val spark : SparkSession = loadSpark(environment, master, warehouse)
-    Try (TransFormMovies(spark).workflow()) match  {
+    Try (TransFormMovies(spark).workflow) match  {
       case Success(value) => {
         logger.info("Process Completed Sucessfuly")
         spark.stop()
@@ -50,7 +47,7 @@ class TransFormMovies(spark: SparkSession) extends Serializable {
 
   import TransFormMovies._
   import spark.implicits._
-
+  implicit val tagsEncoder: Encoder[Tags] = Encoders.product[Tags]
 
   def workflow(): Unit = {
     logger.info("schema--->" + schema)
@@ -59,18 +56,16 @@ class TransFormMovies(spark: SparkSession) extends Serializable {
     //val movieDS : Dataset[Movies] = executeQuery[Movies](spark.sqlContext,schema,mov_tbl,10,selectStr)  // cannot use hive locally
     //val ratingsDS: Dataset[Ratings] = executeQuery(spark.sqlContext,schema,ratings_tbl,10,selectStr)// hence getting from file
     val movieDS : Dataset[Movies] = readCsv[Movies](moviesFile)
-    val ratingsDS : Dataset[Ratings] = readCsv[Ratings](ratingsFile)
 
-    val transFormDS : Dataset[MovieTypes] = transformMovies(movieDS,ratingsDS)
+    val transFormDS : Dataset[MovieTypes] = transformMovies(movieDS)
     transFormDS.show
   }
 
-  def transformMovies(movieDS: Dataset[Movies],
-                      ratingsDS: Dataset[Ratings]) : Dataset[MovieTypes] = {
+  def transformMovies(movieDS: Dataset[Movies]) : Dataset[MovieTypes] = {
 
     val genreDF: DataFrame = addGenre(movieDS)
-    val ratingYrDF: DataFrame = addYear(ratingsDS)
-    val transFormDF : DataFrame = trnsfrmMovies(genreDF,ratingYrDF)
+    val yearDF: DataFrame = addYear(genreDF)
+    val transFormDF : DataFrame = trnsfrmMovies(yearDF)
     transFormDF.as[MovieTypes]
   }
 
@@ -88,13 +83,7 @@ class TransFormMovies(spark: SparkSession) extends Serializable {
   }
 
 
-  def readCsv[T] (path: String)(implicit  encoder: Encoder[T]): Dataset[T] = {
-    spark
-      .read
-      .option("header", "true")
-      .csv(path)
-      .as[T]
-  }
+
 
   def addGenre(movies: Dataset[Movies]) : DataFrame = {
 
@@ -122,23 +111,15 @@ class TransFormMovies(spark: SparkSession) extends Serializable {
 
   }
 
-  def addYear(ratings: Dataset[Ratings]) : DataFrame = {
-    val yearUDF : UserDefinedFunction = udf(ratingYear(_:String))
-    val ratingYrDF : DataFrame = ratings.withColumn("Year",yearUDF(col("timestamp")))
-    ratingYrDF
+  def addYear(genresDF: DataFrame) : DataFrame = {
+    val genreYearDF : DataFrame = genresDF.withColumnRenamed("movieId","id")
+      .withColumn("year", regexp_extract(col("title"), "\\((.*?)\\)", 1).cast("Integer"))
+    genreYearDF
   }
 
-  def trnsfrmMovies(genreDF: DataFrame,ratingYrDF:DataFrame) : DataFrame ={
-    val tansformDF: DataFrame = genreDF.join(ratingYrDF,genreDF("movieId") === ratingYrDF("movieId"),"inner")
-      .drop(col("genres"))
-      .drop(col("timestamp"))
-      .drop(col("userId"))
-      .drop(ratingYrDF("movieId"))
-      .drop(col("rating"))
-      .withColumnRenamed("movieId","id")
-      .dropDuplicates()
+  def trnsfrmMovies(genreYearDF:DataFrame) : DataFrame ={
 
-    val orderDF =  tansformDF.select(col("id"),col("title"),col("year"),
+    val orderDF =  genreYearDF.select(col("id"),col("title"),col("year"),
                       col("isAction"),col("isAdventure"),col("isAnimation"),
                       col("isChildren"),col("isComedy"),col("isCrime") ,
                       col("isDocumentary"),col("isDrama"),col("isFantasy"),
@@ -155,19 +136,12 @@ class TransFormMovies(spark: SparkSession) extends Serializable {
     return genres.contains(genre)
   }
 
-  def ratingYear(timeStampStr:String) : Int = {
-    val ts = timeStampStr.contains(":") match {
-      case true => new Timestamp((fmt  parseDateTime timeStampStr).getMillis).getTime
-      case _ => timeStampStr.toLong
-    }
-    val year :Int  = DateUtils(ts,"year")
-    year
-  }
-
-  def parseDate(input: String):String = try {
-    (fmt parseDateTime input).getMillis.toString
-  } catch {
-    case e: IllegalArgumentException => input
+  def readCsv[T] (path: String)(implicit  encoder: Encoder[T]): Dataset[T] = {
+    spark
+      .read
+      .option("header", "true")
+      .csv(path)
+      .as[T]
   }
 
 
