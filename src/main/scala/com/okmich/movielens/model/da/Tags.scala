@@ -8,7 +8,7 @@ object Tags {
 
 }
 
-case class Tags(userId:String,movieId:String,tag:String,timestamp:Timestamp) {
+case class Tags(userId:String,movieId:String,tag:String,timestamp:String) {
   private val SEP = "|"
   override def toString : String = "[ "+this.userId + SEP + this.movieId + SEP + this.tag
                                                       SEP + this.timestamp + " ]"
